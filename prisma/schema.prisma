@@ -1,0 +1,195 @@
+// prisma/schema.prisma
+// Rede Raizes do Nordeste — Projeto Multidisciplinar UNINTER 2026
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ── Enums ─────────────────────────────────────────────────────────────────────
+
+enum Perfil {
+  CLIENTE
+  ATENDENTE
+  COZINHA
+  GERENTE
+  ADMIN
+}
+
+enum CanalPedido {
+  APP
+  TOTEM
+  BALCAO
+  PICKUP
+  WEB
+}
+
+enum StatusPedido {
+  AGUARDANDO_PAGAMENTO
+  EM_PREPARO
+  PRONTO
+  ENTREGUE
+  CANCELADO
+}
+
+enum StatusPagamento {
+  PENDENTE
+  APROVADO
+  RECUSADO
+  TIMEOUT
+}
+
+enum FormaPagamento {
+  PIX
+  CARTAO_CREDITO
+  CARTAO_DEBITO
+  MOCK
+}
+
+enum TipoMovimento {
+  ENTRADA
+  SAIDA
+}
+
+// ── Modelos ───────────────────────────────────────────────────────────────────
+
+model Usuario {
+  id                  String   @id @default(uuid())
+  nome                String
+  email               String   @unique
+  senhaHash           String
+  perfil              Perfil   @default(CLIENTE)
+  consentimentoLGPD   Boolean  @default(false)
+  dataConsentimento   DateTime?
+  ativo               Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  pedidos             Pedido[]
+  pontosFidelidade    PontosFidelidade?
+  auditLogs           AuditLog[]
+
+  @@map("usuarios")
+}
+
+model Unidade {
+  id              String   @id @default(uuid())
+  nome            String
+  cidade          String
+  estado          String   @db.Char(2)
+  ativa           Boolean  @default(true)
+  cozinhaCompleta Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  pedidos         Pedido[]
+  estoques        EstoqueUnidade[]
+
+  @@map("unidades")
+}
+
+model Produto {
+  id        String   @id @default(uuid())
+  nome      String
+  descricao String?
+  preco     Decimal  @db.Decimal(10, 2)
+  categoria String
+  sazonal   Boolean  @default(false)
+  ativo     Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  itensPedido ItensPedido[]
+  estoques    EstoqueUnidade[]
+
+  @@map("produtos")
+}
+
+model EstoqueUnidade {
+  id                   String   @id @default(uuid())
+  unidadeId            String
+  produtoId            String
+  quantidadeDisponivel Int      @default(0)
+  updatedAt            DateTime @updatedAt
+
+  unidade Unidade @relation(fields: [unidadeId], references: [id])
+  produto Produto @relation(fields: [produtoId], references: [id])
+
+  @@unique([unidadeId, produtoId])
+  @@map("estoque_unidades")
+}
+
+model Pedido {
+  id          String       @id @default(uuid())
+  clienteId   String
+  unidadeId   String
+  canalPedido CanalPedido
+  status      StatusPedido @default(AGUARDANDO_PAGAMENTO)
+  total       Decimal      @db.Decimal(10, 2)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  cliente  Usuario       @relation(fields: [clienteId], references: [id])
+  unidade  Unidade       @relation(fields: [unidadeId], references: [id])
+  itens    ItensPedido[]
+  pagamento Pagamento?
+
+  @@map("pedidos")
+}
+
+model ItensPedido {
+  id            String  @id @default(uuid())
+  pedidoId      String
+  produtoId     String
+  quantidade    Int
+  precoUnitario Decimal @db.Decimal(10, 2)
+
+  pedido  Pedido  @relation(fields: [pedidoId], references: [id])
+  produto Produto @relation(fields: [produtoId], references: [id])
+
+  @@map("itens_pedido")
+}
+
+model Pagamento {
+  id             String          @id @default(uuid())
+  pedidoId       String          @unique
+  status         StatusPagamento @default(PENDENTE)
+  formaPagamento FormaPagamento
+  requestId      String          @unique
+  payload        Json?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  pedido Pedido @relation(fields: [pedidoId], references: [id])
+
+  @@map("pagamentos")
+}
+
+model PontosFidelidade {
+  id        String   @id @default(uuid())
+  clienteId String   @unique
+  saldo     Int      @default(0)
+  updatedAt DateTime @updatedAt
+
+  cliente Usuario @relation(fields: [clienteId], references: [id])
+
+  @@map("pontos_fidelidade")
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  usuarioId String?
+  acao      String
+  recurso   String
+  detalhe   Json?
+  ip        String?
+  createdAt DateTime @default(now())
+
+  usuario Usuario? @relation(fields: [usuarioId], references: [id])
+
+  @@map("audit_logs")
+}
